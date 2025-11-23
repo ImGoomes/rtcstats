@@ -4,6 +4,36 @@ export function generateReport(importer) {
   const reportDiv = document.getElementById('report');
   if (!importer || !importer.data || !reportDiv) return;
   reportDiv.innerHTML = '';
+  // Inject Bootstrap (CDN) once.
+  if (!document.getElementById('rtcstats-bootstrap')) {
+    const link = document.createElement('link');
+    link.id = 'rtcstats-bootstrap';
+    link.rel = 'stylesheet';
+    link.href = 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css';
+    document.head.appendChild(link);
+  }
+  if (!document.getElementById('rtcstats-modern')) {
+    const style = document.createElement('style');
+    style.id = 'rtcstats-modern';
+    style.textContent = `
+      :root { --rs-radius: 18px; --rs-bg: #f5f5f7; --rs-card-bg: #ffffffcc; --rs-border: #d2d2d7; --rs-accent: #0071e3; font-family: -apple-system, BlinkMacSystemFont,'Segoe UI', Roboto, Oxygen, 'Helvetica Neue', Arial, sans-serif; }
+      #report { background: var(--rs-bg); padding: 24px; border-radius: var(--rs-radius); }
+      .rs-card { backdrop-filter: saturate(180%) blur(24px); background: var(--rs-card-bg); border: 1px solid var(--rs-border); border-radius: var(--rs-radius); box-shadow: 0 4px 24px rgba(0,0,0,0.06); }
+      .rs-header { font-size: 1.15rem; letter-spacing: .5px; }
+      table.rs-table th { font-weight:600; font-size: .75rem; text-transform: uppercase; letter-spacing: .05em; color:#6e6e73; }
+      table.rs-table td { font-size:.78rem; }
+      .progress-bar { font-size:.7rem; }
+      .rs-metric-grid { display:grid; grid-template-columns: repeat(auto-fit,minmax(190px,1fr)); gap:12px; }
+      .rs-metric { border:1px solid var(--rs-border); border-radius:14px; padding:10px 14px; background:#fff; display:flex; flex-direction:column; gap:4px; }
+      .rs-metric span.value { font-weight:600; font-size:1.0rem; }
+      .rs-subtle { color:#6e6e73; }
+      .rs-pill { border-radius:999px; padding:2px 10px; font-size:.65rem; background:#e8e8ed; color:#424245; }
+      .rs-overall { background: linear-gradient(135deg,#ffffff,#f0f0f5); }
+      .rs-score-wrapper { min-width:260px; }
+      .rs-adv-toggle { cursor:pointer; }
+    `;
+    document.head.appendChild(style);
+  }
 
   const connections = importer.data.peerConnections || importer.data.PeerConnections || {};
   const isInternals = !!importer.data.PeerConnections;
@@ -156,34 +186,35 @@ export function generateReport(importer) {
   }
 
   function makeScoreBar(score) {
-    const barContainer = document.createElement('div');
-    barContainer.style.position = 'relative';
-    barContainer.style.width = '250px';
-    barContainer.style.height = '20px';
-    barContainer.style.border = '1px solid #666';
-    barContainer.style.borderRadius = '4px';
+    const wrapper = document.createElement('div');
+    wrapper.className = 'rs-score-wrapper d-flex align-items-center gap-2';
+    const progress = document.createElement('div');
+    progress.className = 'progress flex-grow-1';
+    progress.style.height = '16px';
     const bar = document.createElement('div');
-    bar.style.height = '100%';
+    bar.className = 'progress-bar';
+    bar.role = 'progressbar';
     bar.style.width = score + '%';
-    const hue = (score * 1.2);
-    bar.style.background = 'linear-gradient(90deg, hsl(' + hue + ',70%,50%), hsl(' + (hue+20) + ',70%,40%))';
-    bar.style.borderRadius = '4px';
-    barContainer.appendChild(bar);
-    const label = document.createElement('span');
-    label.innerText = ' Score: ' + score;
-    label.style.marginLeft = '8px';
-    barContainer.appendChild(label);
-    return barContainer;
+    bar.style.background = `linear-gradient(90deg, hsl(${score*1.2},70%,55%), hsl(${score*1.2+25},70%,45%))`;
+    bar.innerText = score + '%';
+    progress.appendChild(bar);
+    wrapper.appendChild(progress);
+    const badge = document.createElement('span');
+    badge.className = 'rs-pill';
+    badge.innerText = score >= 80 ? 'Excellent' : score >= 60 ? 'Good' : score >= 40 ? 'Fair' : 'Poor';
+    wrapper.appendChild(badge);
+    return wrapper;
   }
 
-  const details = document.createElement('details');
-  details.open = true;
-  details.style.margin = '10px';
-  const summary = document.createElement('summary');
-  summary.innerText = 'Quality Report';
+  const details = document.createElement('div');
+  details.className = 'rs-card p-4 mb-4';
+  const summary = document.createElement('div');
+  summary.className = 'rs-header d-flex align-items-center justify-content-between mb-3';
+  summary.innerHTML = '<span>RTC Quality Report</span><span class="rs-pill">' + new Date().toLocaleTimeString() + '</span>';
   details.appendChild(summary);
 
   const table = document.createElement('table');
+  table.className = 'rs-table table table-borderless table-hover mb-4 align-middle';
   const head = document.createElement('tr');
   ['Connection','PacketLoss %','Jitter ms','Avg RTT ms','Encode ms/frame','Decode ms/frame','JBuf ms','Bitrate kbps','FrameDrop %','Retransmit %','Pause','Score'].forEach(h => {
     const th = document.createElement('th'); th.innerText = h; head.appendChild(th);
@@ -257,9 +288,9 @@ export function generateReport(importer) {
   const overallScore = computeScore(overall);
 
   const overallDiv = document.createElement('div');
-  overallDiv.style.margin = '10px 0';
-  overallDiv.style.fontWeight = 'bold';
-  overallDiv.innerText = 'Overall Score';
+  overallDiv.className='rs-overall p-3 rounded-4 mb-3 d-flex flex-column flex-lg-row align-items-lg-center gap-3';
+  const overallTitle = document.createElement('div'); overallTitle.innerHTML = '<strong>Overall Quality</strong><div class="rs-subtle small">Aggregated performance across all connections</div>';
+  overallDiv.appendChild(overallTitle);
   overallDiv.appendChild(makeScoreBar(overallScore));
   details.appendChild(overallDiv);
 
@@ -267,18 +298,20 @@ export function generateReport(importer) {
 
   // Extra analytics section
   const analytics = document.createElement('div');
-  analytics.style.marginTop = '10px';
-  analytics.innerHTML = '<h4>Analytics</h4>';
-  const list = document.createElement('ul');
-  function li(t){const e=document.createElement('li'); e.innerText=t; return e;}
-  list.appendChild(li('Average packet loss across connections: ' + overall.packetLossPct.toFixed(2) + '%'));
-  list.appendChild(li('Average jitter across connections: ' + overall.jitterMsAvg.toFixed(2) + ' ms'));
-  list.appendChild(li('Total outbound bitrate: ' + overall.bitrateKbps.toFixed(2) + ' kbps'));
-  list.appendChild(li('Average frame drop percentage: ' + overall.frameDropPct.toFixed(2) + '%'));
-  list.appendChild(li('Average retransmission percentage: ' + overall.retransmitPct.toFixed(2) + '%'));
-  list.appendChild(li('Total pause-like events detected: ' + overall.pauseCount));
-  analytics.appendChild(list);
+  analytics.className = 'rs-metric-grid mb-2';
+  function metricCard(title, value) {
+    const card = document.createElement('div'); card.className='rs-metric';
+    const t = document.createElement('span'); t.className='rs-subtle small'; t.innerText=title;
+    const v = document.createElement('span'); v.className='value'; v.innerText=value;
+    card.appendChild(t); card.appendChild(v); return card;
+  }
+  analytics.appendChild(metricCard('Avg Packet Loss %', overall.packetLossPct.toFixed(2)));
+  analytics.appendChild(metricCard('Avg Jitter (ms)', overall.jitterMsAvg.toFixed(2)));
+  analytics.appendChild(metricCard('Total Bitrate (kbps)', overall.bitrateKbps.toFixed(2)));
+  analytics.appendChild(metricCard('Avg Frame Drop %', overall.frameDropPct.toFixed(2)));
+  analytics.appendChild(metricCard('Avg Retransmit %', overall.retransmitPct.toFixed(2)));
+  analytics.appendChild(metricCard('Total Pause Events', overall.pauseCount));
   details.appendChild(analytics);
 
-  reportDiv.appendChild(details);
+  const outer = document.createElement('div'); outer.className='container-fluid px-0'; outer.appendChild(details); reportDiv.appendChild(outer);
 }
