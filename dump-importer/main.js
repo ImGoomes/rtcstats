@@ -4,9 +4,7 @@ import {detectRTCStatsDump, detectWebRTCInternalsDump} from 'rtcstats-shared';
 
 const container = document.getElementById('tables');
 const reportBtn = document.getElementById('generate-report');
-const reportDiv = document.getElementById('report');
 
-// generateReport moved to report.js for advanced analytics.
 import {generateReport} from './report.js';
 document.getElementById('import').onchange = async (evt) => {
     evt.target.disabled = 'disabled';
