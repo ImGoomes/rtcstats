@@ -1,10 +1,14 @@
 // RTC stats Report.
 // Encapsulates analytics and score computation.
+const reportDiv = document.getElementById('report');
+
+
 export function generateReport(importer) {
-  const reportDiv = document.getElementById('report');
-  if (!importer || !importer.data || !reportDiv) return;
+  
+  if (!importer || !importer.data || !reportDiv) return; //No rtc data or div not found
   reportDiv.innerHTML = '';
-  // Inject Bootstrap (CDN) once.
+
+  // Crete element to inject Bootstrap (CDN)
   if (!document.getElementById('rtcstats-bootstrap')) {
     const link = document.createElement('link');
     link.id = 'rtcstats-bootstrap';
@@ -12,6 +16,8 @@ export function generateReport(importer) {
     link.href = 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css';
     document.head.appendChild(link);
   }
+
+  // Crete element to inject CSS
   if (!document.getElementById('rtcstats-modern')) {
     const style = document.createElement('style');
     style.id = 'rtcstats-modern';
