@@ -59,6 +59,8 @@ export function generateReport(importer) {
       inbound: [],
       outbound: [],
       datachannel: [],
+      candidatePair: [],
+      playout: [],
     };
     Object.keys(stats).forEach(id => {
       const r = stats[id];
@@ -72,9 +74,61 @@ export function generateReport(importer) {
         case 'data-channel':
           metrics.datachannel.push(r);
           break;
+        case 'candidate-pair':
+          metrics.candidatePair.push(r);
+          break;
+        case 'media-playout':
+          metrics.playout.push(r);
+          break;
       }
     });
     return metrics;
+  }
+
+  function buildSnapshotFromInternalsStats(stats) {
+    if (!stats) return null;
+    const reports = {};
+    Object.keys(stats).forEach(reportname => {
+      let statsId;
+      let statsProperty;
+      if (reportname.indexOf('[') !== -1) {
+        const t = reportname.split('[');
+        statsProperty = '[' + t.pop();
+        statsId = t.join('');
+        statsId = statsId.substr(0, statsId.length - 1);
+      } else {
+        const t = reportname.split('-');
+        statsProperty = t.pop();
+        statsId = t.join('-');
+      }
+      if (statsProperty === 'timestamp') return;
+      const entry = stats[reportname];
+      let values;
+      try {
+        values = JSON.parse(entry.values);
+      } catch (e) {
+        return;
+      }
+      if (!values || !values.length) return;
+      if (!reports[statsId]) reports[statsId] = {type: entry.statsType};
+      if (statsProperty === 'type') {
+        reports[statsId].type = values[values.length - 1];
+        return;
+      }
+      if (!reports[statsId].timestamp) {
+        const tsEntry = stats[`${statsId}-timestamp`];
+        if (tsEntry) {
+          try {
+            const tsValues = JSON.parse(tsEntry.values);
+            reports[statsId].timestamp = tsValues[tsValues.length - 1];
+          } catch (e) {
+            /* ignore timestamp parsing errors */
+          }
+        }
+      }
+      reports[statsId][statsProperty] = values[values.length - 1];
+    });
+    return Object.keys(reports).length ? {value: reports} : null;
   }
 
   function aggregate(metrics) {
@@ -121,7 +175,6 @@ export function generateReport(importer) {
       if (typeof jitterBufferMetric === 'number') { jitterBufferDelaySum += jitterBufferMetric; jitterBufferDelayCount++; }
       const audioRms = r['[Audio_Level_in_RMS]'];
       if (typeof audioRms === 'number') { audioRmsSum += audioRms; audioRmsCount++; }
-      // Pause detection heuristic.
       if (r.active === false) result.pauseCount++;
       if (r.qualityLimitationReason && r.qualityLimitationReason !== 'none') result.pauseCount++;
       result.tracks.push({direction: 'inbound', kind: r.kind, mid: r.mid, codecId: r.codecId});
@@ -130,7 +183,8 @@ export function generateReport(importer) {
     metrics.outbound.forEach(r => {
       if (typeof r.packetsSent === 'number') packetsSentTotal += r.packetsSent;
       if (typeof r.retransmittedPacketsSent === 'number') retransmittedPacketsSentTotal += r.retransmittedPacketsSent;
-      if (typeof r['[bytesSent/s]'] === 'number') bytesSentPerSecondTotalBits += r['[bytesSent/s]'];
+      const outboundBitrate = r['[bytesSent/s]'] ?? r['[bytesSent_in_bits/s]'];
+      if (typeof outboundBitrate === 'number') bytesSentPerSecondTotalBits += outboundBitrate;
       const encodeMetric = r['[totalEncodeTime/framesEncoded_in_ms]'];
       if (typeof encodeMetric === 'number') { encodeSum += encodeMetric; encodeCount++; }
       const rttMetric = r['[totalRoundTripTime/roundTripTimeMeasurements]'];
@@ -231,7 +285,7 @@ export function generateReport(importer) {
   connectionIds.forEach(id => {
     const trace = connections[id];
     const traceEvents = isInternals ? trace.updateLog : trace;
-    const snapshot = findLastGetStats(traceEvents);
+    const snapshot = findLastGetStats(traceEvents) || (isInternals ? buildSnapshotFromInternalsStats(trace.stats) : null);
     const metricsRaw = computeMetricsFromSnapshot(snapshot);
     const metrics = aggregate(metricsRaw);
     const score = computeScore(metrics);
