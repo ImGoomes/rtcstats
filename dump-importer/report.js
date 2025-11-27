@@ -1,10 +1,14 @@
 // RTC stats Report.
 // Encapsulates analytics and score computation.
+const reportDiv = document.getElementById('report');
+
+
 export function generateReport(importer) {
-  const reportDiv = document.getElementById('report');
-  if (!importer || !importer.data || !reportDiv) return;
+  
+  if (!importer || !importer.data || !reportDiv) return; //No rtc data or div not found
   reportDiv.innerHTML = '';
-  // Inject Bootstrap (CDN) once.
+
+  // Crete element to inject Bootstrap (CDN)
   if (!document.getElementById('rtcstats-bootstrap')) {
     const link = document.createElement('link');
     link.id = 'rtcstats-bootstrap';
@@ -12,6 +16,8 @@ export function generateReport(importer) {
     link.href = 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css';
     document.head.appendChild(link);
   }
+
+  // Crete element to inject CSS
   if (!document.getElementById('rtcstats-modern')) {
     const style = document.createElement('style');
     style.id = 'rtcstats-modern';
@@ -53,6 +59,8 @@ export function generateReport(importer) {
       inbound: [],
       outbound: [],
       datachannel: [],
+      candidatePair: [],
+      playout: [],
     };
     Object.keys(stats).forEach(id => {
       const r = stats[id];
@@ -66,9 +74,61 @@ export function generateReport(importer) {
         case 'data-channel':
           metrics.datachannel.push(r);
           break;
+        case 'candidate-pair':
+          metrics.candidatePair.push(r);
+          break;
+        case 'media-playout':
+          metrics.playout.push(r);
+          break;
       }
     });
     return metrics;
+  }
+
+  function buildSnapshotFromInternalsStats(stats) {
+    if (!stats) return null;
+    const reports = {};
+    Object.keys(stats).forEach(reportname => {
+      let statsId;
+      let statsProperty;
+      if (reportname.indexOf('[') !== -1) {
+        const t = reportname.split('[');
+        statsProperty = '[' + t.pop();
+        statsId = t.join('');
+        statsId = statsId.substr(0, statsId.length - 1);
+      } else {
+        const t = reportname.split('-');
+        statsProperty = t.pop();
+        statsId = t.join('-');
+      }
+      if (statsProperty === 'timestamp') return;
+      const entry = stats[reportname];
+      let values;
+      try {
+        values = JSON.parse(entry.values);
+      } catch (e) {
+        return;
+      }
+      if (!values || !values.length) return;
+      if (!reports[statsId]) reports[statsId] = {type: entry.statsType};
+      if (statsProperty === 'type') {
+        reports[statsId].type = values[values.length - 1];
+        return;
+      }
+      if (!reports[statsId].timestamp) {
+        const tsEntry = stats[`${statsId}-timestamp`];
+        if (tsEntry) {
+          try {
+            const tsValues = JSON.parse(tsEntry.values);
+            reports[statsId].timestamp = tsValues[tsValues.length - 1];
+          } catch (e) {
+            /* ignore timestamp parsing errors */
+          }
+        }
+      }
+      reports[statsId][statsProperty] = values[values.length - 1];
+    });
+    return Object.keys(reports).length ? {value: reports} : null;
   }
 
   function aggregate(metrics) {
@@ -80,7 +140,6 @@ export function generateReport(importer) {
       retransmitPct: 0,
       pauseCount: 0,
       avgRttMs: 0,
-      encodeMsPerFrame: 0,
       decodeMsPerFrame: 0,
       jitterBufferDelayMs: 0,
       playoutDelayMs: 0,
@@ -96,7 +155,6 @@ export function generateReport(importer) {
     let packetsSentTotal = 0, retransmittedPacketsSentTotal = 0;
     let bytesSentPerSecondTotalBits = 0;
     let rttSumMs = 0, rttCount = 0;
-    let encodeSum = 0, encodeCount = 0;
     let decodeSum = 0, decodeCount = 0;
     let jitterBufferDelaySum = 0, jitterBufferDelayCount = 0;
     let playoutDelaySumMs = 0, playoutDelayCount = 0;
@@ -115,7 +173,6 @@ export function generateReport(importer) {
       if (typeof jitterBufferMetric === 'number') { jitterBufferDelaySum += jitterBufferMetric; jitterBufferDelayCount++; }
       const audioRms = r['[Audio_Level_in_RMS]'];
       if (typeof audioRms === 'number') { audioRmsSum += audioRms; audioRmsCount++; }
-      // Pause detection heuristic.
       if (r.active === false) result.pauseCount++;
       if (r.qualityLimitationReason && r.qualityLimitationReason !== 'none') result.pauseCount++;
       result.tracks.push({direction: 'inbound', kind: r.kind, mid: r.mid, codecId: r.codecId});
@@ -124,9 +181,8 @@ export function generateReport(importer) {
     metrics.outbound.forEach(r => {
       if (typeof r.packetsSent === 'number') packetsSentTotal += r.packetsSent;
       if (typeof r.retransmittedPacketsSent === 'number') retransmittedPacketsSentTotal += r.retransmittedPacketsSent;
-      if (typeof r['[bytesSent/s]'] === 'number') bytesSentPerSecondTotalBits += r['[bytesSent/s]'];
-      const encodeMetric = r['[totalEncodeTime/framesEncoded_in_ms]'];
-      if (typeof encodeMetric === 'number') { encodeSum += encodeMetric; encodeCount++; }
+      const outboundBitrate = r['[bytesSent/s]'] ?? r['[bytesSent_in_bits/s]'];
+      if (typeof outboundBitrate === 'number') bytesSentPerSecondTotalBits += outboundBitrate;
       const rttMetric = r['[totalRoundTripTime/roundTripTimeMeasurements]'];
       if (typeof rttMetric === 'number') { rttSumMs += rttMetric * 1000; rttCount++; }
       if (r.qualityLimitationReason && r.qualityLimitationReason !== 'none') {
@@ -161,7 +217,6 @@ export function generateReport(importer) {
     result.retransmitPct = packetsSentTotal ? (retransmittedPacketsSentTotal / packetsSentTotal) * 100 : 0;
     result.bitrateKbps = bytesSentPerSecondTotalBits ? (bytesSentPerSecondTotalBits / 1000) : 0;
     result.avgRttMs = rttCount ? (rttSumMs / rttCount) : 0;
-    result.encodeMsPerFrame = encodeCount ? (encodeSum / encodeCount) : 0;
     result.decodeMsPerFrame = decodeCount ? (decodeSum / decodeCount) : 0;
     result.jitterBufferDelayMs = jitterBufferDelayCount ? (jitterBufferDelaySum / jitterBufferDelayCount) : 0;
     result.playoutDelayMs = playoutDelayCount ? (playoutDelaySumMs / playoutDelayCount) : 0;
@@ -216,7 +271,7 @@ export function generateReport(importer) {
   const table = document.createElement('table');
   table.className = 'rs-table table table-borderless table-hover mb-4 align-middle';
   const head = document.createElement('tr');
-  ['Connection','PacketLoss %','Jitter ms','Avg RTT ms','Encode ms/frame','Decode ms/frame','JBuf ms','Bitrate kbps','FrameDrop %','Retransmit %','Pause','Score'].forEach(h => {
+  ['Connection','PacketLoss %','Jitter ms','Avg RTT ms','Decode ms/frame','JBuf ms','Bitrate kbps','FrameDrop %','Retransmit %','Pause','Score'].forEach(h => {
     const th = document.createElement('th'); th.innerText = h; head.appendChild(th);
   });
   table.appendChild(head);
@@ -225,7 +280,7 @@ export function generateReport(importer) {
   connectionIds.forEach(id => {
     const trace = connections[id];
     const traceEvents = isInternals ? trace.updateLog : trace;
-    const snapshot = findLastGetStats(traceEvents);
+    const snapshot = findLastGetStats(traceEvents) || (isInternals ? buildSnapshotFromInternalsStats(trace.stats) : null);
     const metricsRaw = computeMetricsFromSnapshot(snapshot);
     const metrics = aggregate(metricsRaw);
     const score = computeScore(metrics);
@@ -238,7 +293,6 @@ export function generateReport(importer) {
     row.appendChild(td(metrics.packetLossPct));
     row.appendChild(td(metrics.jitterMsAvg));
     row.appendChild(td(metrics.avgRttMs));
-    row.appendChild(td(metrics.encodeMsPerFrame));
     row.appendChild(td(metrics.decodeMsPerFrame));
     row.appendChild(td(metrics.jitterBufferDelayMs));
     row.appendChild(td(metrics.bitrateKbps));
