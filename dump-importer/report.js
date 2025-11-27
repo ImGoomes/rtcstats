@@ -140,7 +140,6 @@ export function generateReport(importer) {
       retransmitPct: 0,
       pauseCount: 0,
       avgRttMs: 0,
-      encodeMsPerFrame: 0,
       decodeMsPerFrame: 0,
       jitterBufferDelayMs: 0,
       playoutDelayMs: 0,
@@ -156,7 +155,6 @@ export function generateReport(importer) {
     let packetsSentTotal = 0, retransmittedPacketsSentTotal = 0;
     let bytesSentPerSecondTotalBits = 0;
     let rttSumMs = 0, rttCount = 0;
-    let encodeSum = 0, encodeCount = 0;
     let decodeSum = 0, decodeCount = 0;
     let jitterBufferDelaySum = 0, jitterBufferDelayCount = 0;
     let playoutDelaySumMs = 0, playoutDelayCount = 0;
@@ -185,8 +183,6 @@ export function generateReport(importer) {
       if (typeof r.retransmittedPacketsSent === 'number') retransmittedPacketsSentTotal += r.retransmittedPacketsSent;
       const outboundBitrate = r['[bytesSent/s]'] ?? r['[bytesSent_in_bits/s]'];
       if (typeof outboundBitrate === 'number') bytesSentPerSecondTotalBits += outboundBitrate;
-      const encodeMetric = r['[totalEncodeTime/framesEncoded_in_ms]'];
-      if (typeof encodeMetric === 'number') { encodeSum += encodeMetric; encodeCount++; }
       const rttMetric = r['[totalRoundTripTime/roundTripTimeMeasurements]'];
       if (typeof rttMetric === 'number') { rttSumMs += rttMetric * 1000; rttCount++; }
       if (r.qualityLimitationReason && r.qualityLimitationReason !== 'none') {
@@ -221,7 +217,6 @@ export function generateReport(importer) {
     result.retransmitPct = packetsSentTotal ? (retransmittedPacketsSentTotal / packetsSentTotal) * 100 : 0;
     result.bitrateKbps = bytesSentPerSecondTotalBits ? (bytesSentPerSecondTotalBits / 1000) : 0;
     result.avgRttMs = rttCount ? (rttSumMs / rttCount) : 0;
-    result.encodeMsPerFrame = encodeCount ? (encodeSum / encodeCount) : 0;
     result.decodeMsPerFrame = decodeCount ? (decodeSum / decodeCount) : 0;
     result.jitterBufferDelayMs = jitterBufferDelayCount ? (jitterBufferDelaySum / jitterBufferDelayCount) : 0;
     result.playoutDelayMs = playoutDelayCount ? (playoutDelaySumMs / playoutDelayCount) : 0;
@@ -276,7 +271,7 @@ export function generateReport(importer) {
   const table = document.createElement('table');
   table.className = 'rs-table table table-borderless table-hover mb-4 align-middle';
   const head = document.createElement('tr');
-  ['Connection','PacketLoss %','Jitter ms','Avg RTT ms','Encode ms/frame','Decode ms/frame','JBuf ms','Bitrate kbps','FrameDrop %','Retransmit %','Pause','Score'].forEach(h => {
+  ['Connection','PacketLoss %','Jitter ms','Avg RTT ms','Decode ms/frame','JBuf ms','Bitrate kbps','FrameDrop %','Retransmit %','Pause','Score'].forEach(h => {
     const th = document.createElement('th'); th.innerText = h; head.appendChild(th);
   });
   table.appendChild(head);
@@ -298,7 +293,6 @@ export function generateReport(importer) {
     row.appendChild(td(metrics.packetLossPct));
     row.appendChild(td(metrics.jitterMsAvg));
     row.appendChild(td(metrics.avgRttMs));
-    row.appendChild(td(metrics.encodeMsPerFrame));
     row.appendChild(td(metrics.decodeMsPerFrame));
     row.appendChild(td(metrics.jitterBufferDelayMs));
     row.appendChild(td(metrics.bitrateKbps));
