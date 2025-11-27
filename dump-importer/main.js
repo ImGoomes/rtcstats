@@ -3,7 +3,6 @@ import {WebRTCInternalsDumpImporter} from './import-internals.js';
 import {detectRTCStatsDump, detectWebRTCInternalsDump} from 'rtcstats-shared';
 
 const container = document.getElementById('tables');
-const reportBtn = document.getElementById('generate-report');
 
 import {generateReport} from './report.js';
 document.getElementById('import').onchange = async (evt) => {
@@ -23,19 +22,14 @@ document.getElementById('import').onchange = async (evt) => {
     const blob = await (new Response(stream)).blob();
     if (await detectRTCStatsDump(blob)) {
         window.importer = new RTCStatsDumpImporter(container);
-        importer.process(blob);
+        await importer.process(blob);
     } else if (await detectWebRTCInternalsDump(blob)) {
         window.importer = new WebRTCInternalsDumpImporter(container, {useReferenceTime});
-        importer.process(blob);
+        await importer.process(blob);
     } else {
         console.error('Unrecognized format');
     }
-    window.rtcStatsDumpImporterSuccess = true;
-    
-    if (window.rtcStatsDumpImporterSuccess && reportBtn) 
-    { 
-        reportBtn.disabled = false; 
-        reportBtn.onclick = () => generateReport(window.importer); 
-    }
+
+    generateReport(window.importer); 
 };
 
