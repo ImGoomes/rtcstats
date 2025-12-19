@@ -277,7 +277,7 @@ export function generateReport(importer) {
   table.appendChild(head);
 
   function getConnectionLabel(trace, isInternals) {
-    // Try to determine connection type (Camera or streaming)
+    // Try to determine connection type (Cameras or streaming)
     const traceEvents = isInternals ? trace.updateLog : trace;
     if (traceEvents && Array.isArray(traceEvents)) {
       for (let i = traceEvents.length - 1; i >= 0; i--) {
