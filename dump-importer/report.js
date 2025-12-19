@@ -1,4 +1,4 @@
-// RTC stats Report.
+// RTC stats Report
 // Encapsulates analytics and score computation.
 const reportDiv = document.getElementById('report');
 
