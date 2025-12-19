@@ -276,6 +276,31 @@ export function generateReport(importer) {
   });
   table.appendChild(head);
 
+  function getConnectionLabel(trace, isInternals) {
+    // Try to find stream information to determine connection type
+    const traceEvents = isInternals ? trace.updateLog : trace;
+    if (traceEvents && Array.isArray(traceEvents)) {
+      for (let i = traceEvents.length - 1; i >= 0; i--) {
+        const event = traceEvents[i];
+        if (event.type === 'transceiverModified' && event.value) {
+          try {
+            const value = JSON.parse(event.value);
+            const streams = value.receiver?.streams || [];
+            for (const stream of streams) {
+              if (typeof stream === 'string') {
+                if (stream.includes('.camera.')) return 'Cameras';
+                if (stream.includes('.kvm.')) return 'Streaming';
+              }
+            }
+          } catch (e) {
+            // Ignore parse errors
+          }
+        }
+      }
+    }
+    return null;
+  }
+
   const connectionIds = Object.keys(connections);
   connectionIds.forEach(id => {
     const trace = connections[id];
@@ -287,9 +312,12 @@ export function generateReport(importer) {
     metrics.score = score;
     allConnectionMetrics.push(metrics);
 
+    const connectionLabel = getConnectionLabel(trace, isInternals);
+    const displayName = connectionLabel || id;
+
     const row = document.createElement('tr');
     function td(v){const c=document.createElement('td'); c.innerText=typeof v==='number'?v.toFixed(2):v; return c;}
-    row.appendChild(td(id));
+    row.appendChild(td(displayName));
     row.appendChild(td(metrics.packetLossPct));
     row.appendChild(td(metrics.jitterMsAvg));
     row.appendChild(td(metrics.avgRttMs));
@@ -316,7 +344,11 @@ export function generateReport(importer) {
     const row = document.createElement('tr');
     function td(v){const c=document.createElement('td'); c.innerText=typeof v==='number'?v.toFixed(2):v; return c;}
     const limitation = Object.keys(m.limitationReasons).map(k=>k+':'+m.limitationReasons[k]).join(', ') || 'none';
-    row.appendChild(td(connectionIds[i]));
+    const id = connectionIds[i];
+    const trace = connections[id];
+    const connectionLabel = getConnectionLabel(trace, isInternals);
+    const displayName = connectionLabel || id;
+    row.appendChild(td(displayName));
     row.appendChild(td(m.audioLevelRms));
     row.appendChild(td(m.playoutDelayMs));
     row.appendChild(td(limitation));
