@@ -27,6 +27,7 @@ describe('features.js', () => {
                 deviceMemory: 8,
                 screen: 'screen',
                 window: 'window',
+                webSocketConnectionTime: undefined,
                 calledGetUserMedia: true,
                 calledGetUserMediaAudio: true,
                 calledGetUserMediaCombined: false,
@@ -59,6 +60,7 @@ describe('features.js', () => {
                 deviceMemory: 8,
                 screen: 'screen',
                 window: 'window',
+                webSocketConnectionTime: undefined,
                 calledGetUserMedia: false,
                 calledGetUserMediaAudio: false,
                 calledGetUserMediaCombined: false,
@@ -420,6 +422,29 @@ describe('features.js', () => {
                 expect(features.configuredIceServers).to.equal(undefined);
             });
         });
+
+        it('should extract first candidate pair stats', () => {
+            const pcTrace = [
+                {
+                    type: 'onconnectionstatechange',
+                    value: 'connected',
+                    timestamp: 1000,
+                },
+                {
+                    type: 'getStats',
+                    value: {
+                        1: {type: 'transport', selectedCandidatePairId: '2'},
+                        2: {type: 'candidate-pair', localCandidateId: '3', remoteCandidateId: 4},
+                        3: {type: 'candidate-pair', candidateType: 'relay'},
+                        4: {type: 'candidate-pair', candidateType: 'host'},
+                    },
+                    timestamp: 1001,
+                },
+            ];
+            let features = extractConnectionFeatures([], pcTrace);
+            expect(features.firstCandidatePairLocalType).to.equal('relay');
+            expect(features.firstCandidatePairRemoteType).to.equal('host');
+        });
     });
 
     describe('extractTrackFeatures', () => {
@@ -430,19 +455,25 @@ describe('features.js', () => {
             startTime: 1000,
             statsId: 'track1_stats',
         };
+        const stats = {
+            [trackInfo.statsId]: {
+                framesEncoded: 97,
+            }
+        };
 
         it('should extract features for a track', () => {
             const pcTrace = [
-                { type: 'getStats', timestamp: 1001, value: {} },
-                { type: 'getStats', timestamp: 1002, value: {} },
+                { type: 'getStats', timestamp: 1001, value: stats },
+                { type: 'getStats', timestamp: 1002, value: stats },
             ];
             const features = extractTrackFeatures([], pcTrace, trackInfo);
             expect(features).to.deep.equal({
                 direction: 'sendonly',
                 duration: 2,
+                frameCount: 97,
                 kind: 'audio',
                 startTime: 1000,
-                trackId: 'track1',
+                trackIdentifier: 'track1',
             });
         });
 

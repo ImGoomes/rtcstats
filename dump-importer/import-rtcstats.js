@@ -1,4 +1,4 @@
-import {readRTCStatsDump, createRtcStatsTimeSeries} from 'rtcstats-shared';
+import {readRTCStatsDump, createRtcStatsTimeSeries} from '@rtcstats/rtcstats-shared';
 
 import {StatsRatesCalculatorAdapter} from './chromium/stats_rates_calculator_adapter.js';
 
@@ -53,7 +53,15 @@ export class RTCStatsDumpImporter extends EventTarget {
         setTimeout(this.processConnections.bind(this), 0, connectionIds);
 
         const peerConnectionTrace = this.data.peerConnections[connectionId];
-        const container = createContainers(connectionId, this.data.url, this.containers);
+        const create = peerConnectionTrace.find(traceEvent => traceEvent.type === 'create');
+        let url;
+        if (this.data.origin && this.data.url) {
+            url = this.data.origin + '/' + this.data.url;
+        } else if (create && create.extra && create.extra[0]) {
+            // Chrome dump.
+            url = create.extra[0];
+        }
+        const container = createContainers(connectionId, url, this.containers);
         this.container.appendChild(container);
 
         this._showCandidateGrid(connectionId);

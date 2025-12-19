@@ -65,6 +65,12 @@ export function extractClientFeatures(clientTrace) {
         }).length,
     };
 
+    const webSocket = {
+        webSocketConnectionTime: clientTrace.find(traceEvent => {
+            return traceEvent.type === 'websocket';
+        })?.value?.connectionTime,
+    };
+
     return {
         ...create,
         // The lifetime of the client in milliseconds.
@@ -74,6 +80,7 @@ export function extractClientFeatures(clientTrace) {
         ...getUserMedia,
         // The timestamp at which RTCStatsDump was started.
         startTime: clientTrace[0].timestamp,
+        ...webSocket,
     };
 }
 
@@ -339,9 +346,25 @@ export function extractConnectionFeatures(/* clientTrace*/_, peerConnectionTrace
     };
 }
 
+function pluckStat(statsObject, properties) {
+    if (!statsObject) return;
+    for (const property of properties) {
+        if (statsObject.hasOwnProperty(property)) {
+            return statsObject[property];
+        }
+    }
+}
+
 export function extractTrackFeatures(/* clientTrace*/_, peerConnectionTrace, trackInformation) {
     // Track stats can be extracted by iterating over peerConnectionTrace and looking at
     // getStats events which are associated with trackInformation.statsId.
+    const features = {
+        direction: trackInformation.direction,
+        kind: trackInformation.kind,
+        startTime: trackInformation.startTime,
+        trackIdentifier: trackInformation.id,
+    };
+
     const codec = (() => {
         for (const traceEvent of peerConnectionTrace) {
             if (traceEvent.type !== 'getStats' || !traceEvent.value) continue;
@@ -357,22 +380,28 @@ export function extractTrackFeatures(/* clientTrace*/_, peerConnectionTrace, tra
         }
     })();
 
-    const features = {
-        ...codec,
-        direction: trackInformation.direction,
+    // Find the last stats and extract stats events (typically averages over the whole duration).
+    const lastStatsFeatures = {
         duration: 0,
-        kind: trackInformation.kind,
-        startTime: trackInformation.startTime,
-        trackId: trackInformation.id,
     };
-    // Find the last stats.
+    let lastStatsEvent;
+    let lastTrackStats;
     for (let i = peerConnectionTrace.length - 1; i >= 0; i--) {
         const traceEvent = peerConnectionTrace[i];
-        if (traceEvent.type !== 'getStats') continue;
-        features['duration'] = Math.floor(traceEvent.timestamp - trackInformation.startTime);
+        if (traceEvent.type !== 'getStats' || !traceEvent.value) continue;
+        lastStatsEvent = traceEvent;
+        lastTrackStats = lastStatsEvent.value[trackInformation.statsId];
         break;
     }
+    if (lastStatsEvent) {
+        const duration = lastStatsEvent.timestamp - trackInformation.startTime;
+        lastStatsFeatures['duration'] = Math.floor(duration);
+        lastStatsFeatures['frameCount'] = pluckStat(lastTrackStats, ['framesEncoded', 'framesDecoded']);
+    }
+
     return {
+        ...codec,
         ...features,
+        ...lastStatsFeatures,
     };
 }

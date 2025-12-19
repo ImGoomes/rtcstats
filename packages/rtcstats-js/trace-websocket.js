@@ -2,10 +2,11 @@ import {compressMethod} from '@rtcstats/rtcstats-shared';
 
 const PROTOCOL_VERSION = '5.0';
 
-export function WebSocketTrace() {
+export function WebSocketTrace(config = {}) {
     let buffer = [];
     let connection;
     let lastTime = 0;
+    let connectionStartTime = 0;
     const trace = function(...args) {
         const now = Date.now();
         args.push(now - lastTime);
@@ -54,18 +55,33 @@ export function WebSocketTrace() {
         if (connection) {
             connection.close();
         }
+        connectionStartTime = Date.now();
         connection = new WebSocket(wsURL, 'rtcstats#' + PROTOCOL_VERSION);
         connection.addEventListener('error', (e) => {
             // console.error('WS ERROR', e);
         });
 
-        connection.addEventListener('close', () => {
+        connection.addEventListener('close', (e) => {
+            if (e.code === 1008 && config.log) {
+                config.log('rtcstats websocket connection closed with error=1008. ' +
+                               'Typically this means authorization is required and failed.');
+            }
             // reconnect?
         });
 
         connection.addEventListener('open', () => {
+            // Note: open is called while the socket is still authenticating.
+            // This can lead to messages being send and dropped when the token
+            // is not valid.
+            const connectionTime = Date.now() - connectionStartTime;
             setTimeout(function flush() {
                 if (!buffer.length) {
+                    trace('websocket', null, {
+                        connectionTime,
+                    });
+                    return;
+                }
+                if (connection.readyState !== WebSocket.OPEN) {
                     return;
                 }
                 connection.send(JSON.stringify(buffer.shift()));
