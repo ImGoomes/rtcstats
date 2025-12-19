@@ -1,10 +1,10 @@
-// RTC stats Report.
+// RTC stats Report
 // Encapsulates analytics and score computation.
 const reportDiv = document.getElementById('report');
 
 
 export function generateReport(importer) {
-  
+
   if (!importer || !importer.data || !reportDiv) return; //No rtc data or div not found
   reportDiv.innerHTML = '';
 
@@ -110,7 +110,7 @@ export function generateReport(importer) {
         return;
       }
       if (!values || !values.length) return;
-      if (!reports[statsId]) reports[statsId] = {type: entry.statsType};
+      if (!reports[statsId]) reports[statsId] = { type: entry.statsType };
       if (statsProperty === 'type') {
         reports[statsId].type = values[values.length - 1];
         return;
@@ -128,7 +128,7 @@ export function generateReport(importer) {
       }
       reports[statsId][statsProperty] = values[values.length - 1];
     });
-    return Object.keys(reports).length ? {value: reports} : null;
+    return Object.keys(reports).length ? { value: reports } : null;
   }
 
   function aggregate(metrics) {
@@ -175,7 +175,7 @@ export function generateReport(importer) {
       if (typeof audioRms === 'number') { audioRmsSum += audioRms; audioRmsCount++; }
       if (r.active === false) result.pauseCount++;
       if (r.qualityLimitationReason && r.qualityLimitationReason !== 'none') result.pauseCount++;
-      result.tracks.push({direction: 'inbound', kind: r.kind, mid: r.mid, codecId: r.codecId});
+      result.tracks.push({ direction: 'inbound', kind: r.kind, mid: r.mid, codecId: r.codecId });
     });
 
     metrics.outbound.forEach(r => {
@@ -189,7 +189,7 @@ export function generateReport(importer) {
         result.limitationReasons[r.qualityLimitationReason] = (result.limitationReasons[r.qualityLimitationReason] || 0) + 1;
       }
       if (r.active === false) result.pauseCount++;
-      result.tracks.push({direction: 'outbound', kind: r.kind, mid: r.mid, codecId: r.codecId});
+      result.tracks.push({ direction: 'outbound', kind: r.kind, mid: r.mid, codecId: r.codecId });
     });
 
     // Candidate pair RTT fallback.
@@ -250,7 +250,7 @@ export function generateReport(importer) {
     bar.className = 'progress-bar';
     bar.role = 'progressbar';
     bar.style.width = score + '%';
-    bar.style.background = `linear-gradient(90deg, hsl(${score*1.2},70%,55%), hsl(${score*1.2+25},70%,45%))`;
+    bar.style.background = `linear-gradient(90deg, hsl(${score * 1.2},70%,55%), hsl(${score * 1.2 + 25},70%,45%))`;
     bar.innerText = score + '%';
     progress.appendChild(bar);
     wrapper.appendChild(progress);
@@ -271,10 +271,35 @@ export function generateReport(importer) {
   const table = document.createElement('table');
   table.className = 'rs-table table table-borderless table-hover mb-4 align-middle';
   const head = document.createElement('tr');
-  ['Connection','PacketLoss %','Jitter ms','Avg RTT ms','Decode ms/frame','JBuf ms','Bitrate kbps','FrameDrop %','Retransmit %','Pause','Score'].forEach(h => {
+  ['Connection', 'PacketLoss %', 'Jitter ms', 'Avg RTT ms', 'Decode ms/frame', 'JBuf ms', 'Bitrate kbps', 'FrameDrop %', 'Retransmit %', 'Pause', 'Score'].forEach(h => {
     const th = document.createElement('th'); th.innerText = h; head.appendChild(th);
   });
   table.appendChild(head);
+
+  function getConnectionLabel(trace, isInternals) {
+    // Try to determine connection type (Cameras or streaming)
+    const traceEvents = isInternals ? trace.updateLog : trace;
+    if (traceEvents && Array.isArray(traceEvents)) {
+      for (let i = traceEvents.length - 1; i >= 0; i--) {
+        const event = traceEvents[i];
+        if (event.type === 'transceiverModified' && event.value) {
+          try {
+            const value = JSON.parse(event.value);
+            const streams = value.receiver?.streams || [];
+            for (const stream of streams) {
+              if (typeof stream === 'string') {
+                if (stream.includes('.camera.')) return 'Cameras';
+                if (stream.includes('.kvm.')) return 'Streaming';
+              }
+            }
+          } catch (e) {
+            // Ignore parse errors
+          }
+        }
+      }
+    }
+    return null;
+  }
 
   const connectionIds = Object.keys(connections);
   connectionIds.forEach(id => {
@@ -287,9 +312,12 @@ export function generateReport(importer) {
     metrics.score = score;
     allConnectionMetrics.push(metrics);
 
+    const connectionLabel = getConnectionLabel(trace, isInternals);
+    const displayName = connectionLabel || id;
+
     const row = document.createElement('tr');
-    function td(v){const c=document.createElement('td'); c.innerText=typeof v==='number'?v.toFixed(2):v; return c;}
-    row.appendChild(td(id));
+    function td(v) { const c = document.createElement('td'); c.innerText = typeof v === 'number' ? v.toFixed(2) : v; return c; }
+    row.appendChild(td(displayName));
     row.appendChild(td(metrics.packetLossPct));
     row.appendChild(td(metrics.jitterMsAvg));
     row.appendChild(td(metrics.avgRttMs));
@@ -310,13 +338,17 @@ export function generateReport(importer) {
   const advSummary = document.createElement('summary'); advSummary.innerText = 'Advanced Metrics'; advDetails.appendChild(advSummary);
   const advTable = document.createElement('table');
   const advHead = document.createElement('tr');
-  ['Connection','Audio RMS','Playout Delay ms','Limitation Reasons','PSNR-Y'].forEach(h=>{const th=document.createElement('th'); th.innerText=h; advHead.appendChild(th);});
+  ['Connection', 'Audio RMS', 'Playout Delay ms', 'Limitation Reasons', 'PSNR-Y'].forEach(h => { const th = document.createElement('th'); th.innerText = h; advHead.appendChild(th); });
   advTable.appendChild(advHead);
-  allConnectionMetrics.forEach((m,i) => {
+  allConnectionMetrics.forEach((m, i) => {
     const row = document.createElement('tr');
-    function td(v){const c=document.createElement('td'); c.innerText=typeof v==='number'?v.toFixed(2):v; return c;}
-    const limitation = Object.keys(m.limitationReasons).map(k=>k+':'+m.limitationReasons[k]).join(', ') || 'none';
-    row.appendChild(td(connectionIds[i]));
+    function td(v) { const c = document.createElement('td'); c.innerText = typeof v === 'number' ? v.toFixed(2) : v; return c; }
+    const limitation = Object.keys(m.limitationReasons).map(k => k + ':' + m.limitationReasons[k]).join(', ') || 'none';
+    const id = connectionIds[i];
+    const trace = connections[id];
+    const connectionLabel = getConnectionLabel(trace, isInternals);
+    const displayName = connectionLabel || id;
+    row.appendChild(td(displayName));
     row.appendChild(td(m.audioLevelRms));
     row.appendChild(td(m.playoutDelayMs));
     row.appendChild(td(limitation));
@@ -335,14 +367,14 @@ export function generateReport(importer) {
     acc.retransmitPct += m.retransmitPct;
     acc.pauseCount += m.pauseCount;
     return acc;
-  }, {packetLossPct:0,jitterMsAvg:0,bitrateKbps:0,frameDropPct:0,retransmitPct:0,pauseCount:0});
+  }, { packetLossPct: 0, jitterMsAvg: 0, bitrateKbps: 0, frameDropPct: 0, retransmitPct: 0, pauseCount: 0 });
   const n = allConnectionMetrics.length || 1;
   Object.keys(overall).forEach(k => { if (k !== 'bitrateKbps' && k !== 'pauseCount') overall[k] /= n; });
   overall.bitrateKbps = overall.bitrateKbps;
   const overallScore = computeScore(overall);
 
   const overallDiv = document.createElement('div');
-  overallDiv.className='rs-overall p-3 rounded-4 mb-3 d-flex flex-column flex-lg-row align-items-lg-center gap-3';
+  overallDiv.className = 'rs-overall p-3 rounded-4 mb-3 d-flex flex-column flex-lg-row align-items-lg-center gap-3';
   const overallTitle = document.createElement('div'); overallTitle.innerHTML = '<strong>Overall Quality</strong><div class="rs-subtle small">Aggregated performance across all connections</div>';
   overallDiv.appendChild(overallTitle);
   overallDiv.appendChild(makeScoreBar(overallScore));
@@ -354,9 +386,9 @@ export function generateReport(importer) {
   const analytics = document.createElement('div');
   analytics.className = 'rs-metric-grid mb-2';
   function metricCard(title, value) {
-    const card = document.createElement('div'); card.className='rs-metric';
-    const t = document.createElement('span'); t.className='rs-subtle small'; t.innerText=title;
-    const v = document.createElement('span'); v.className='value'; v.innerText=value;
+    const card = document.createElement('div'); card.className = 'rs-metric';
+    const t = document.createElement('span'); t.className = 'rs-subtle small'; t.innerText = title;
+    const v = document.createElement('span'); v.className = 'value'; v.innerText = value;
     card.appendChild(t); card.appendChild(v); return card;
   }
   analytics.appendChild(metricCard('Avg Packet Loss %', overall.packetLossPct.toFixed(2)));
@@ -367,5 +399,5 @@ export function generateReport(importer) {
   analytics.appendChild(metricCard('Total Pause Events', overall.pauseCount));
   details.appendChild(analytics);
 
-  const outer = document.createElement('div'); outer.className='container-fluid px-0'; outer.appendChild(details); reportDiv.appendChild(outer);
+  const outer = document.createElement('div'); outer.className = 'container-fluid px-0'; outer.appendChild(details); reportDiv.appendChild(outer);
 }
